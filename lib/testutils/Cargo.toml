@@ -17,7 +17,7 @@ readme = { workspace = true }
 [dependencies]
 async-trait = { workspace = true }
 futures = { workspace = true }
-git2 = { workspace = true }
+# git2 = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
 jj-lib = { workspace = true, features = ["testing"] }

@@ -185,7 +185,7 @@ impl ReadonlyRepo {
         index_store_initializer: &IndexStoreInitializer,
         submodule_store_initializer: &SubmoduleStoreInitializer,
     ) -> Result<Arc<ReadonlyRepo>, RepoInitError> {
-        let repo_path = dunce::canonicalize(repo_path).context(repo_path)?;
+        let repo_path = repo_path.to_path_buf();
 
         let store_path = repo_path.join("store");
         fs::create_dir(&store_path).context(&store_path)?;
@@ -401,15 +401,15 @@ impl Default for StoreFactories {
                 )?))
             }),
         );
-        #[cfg(feature = "testing")]
-        factories.add_backend(
-            crate::secret_backend::SecretBackend::name(),
-            Box::new(|settings, store_path| {
-                Ok(Box::new(crate::secret_backend::SecretBackend::load(
-                    settings, store_path,
-                )?))
-            }),
-        );
+        // #[cfg(feature = "testing")]
+        // factories.add_backend(
+        //     crate::secret_backend::SecretBackend::name(),
+        //     Box::new(|settings, store_path| {
+        //         Ok(Box::new(crate::secret_backend::SecretBackend::load(
+        //             settings, store_path,
+        //         )?))
+        //     }),
+        // );
 
         // OpStores
         factories.add_op_store(

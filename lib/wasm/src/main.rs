@@ -1,19 +1,7 @@
-// Copyright 2020 The Jujutsu Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// https://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// use wasm_bindgen::prelude::*;
 
 use std::collections::HashMap;
-use std::env;
+// use std::env;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Read;
@@ -21,7 +9,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Once;
+// use std::sync::Once;
 
 use itertools::Itertools;
 use jj_lib::backend;
@@ -40,7 +28,6 @@ use jj_lib::commit_builder::CommitBuilder;
 use jj_lib::config::ConfigLayer;
 use jj_lib::config::ConfigSource;
 use jj_lib::config::StackedConfig;
-// use jj_lib::git_backend::GitBackend;
 use jj_lib::local_backend::LocalBackend;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId;
@@ -52,6 +39,7 @@ use jj_lib::repo::StoreFactories;
 use jj_lib::repo_path::RepoPath;
 use jj_lib::repo_path::RepoPathBuf;
 // use jj_lib::secret_backend::SecretBackend;
+use jj_lib::op_store::WorkspaceId;
 use jj_lib::settings::UserSettings;
 use jj_lib::signing::Signer;
 use jj_lib::store::Store;
@@ -62,47 +50,55 @@ use jj_lib::working_copy::SnapshotError;
 use jj_lib::working_copy::SnapshotOptions;
 use jj_lib::working_copy::SnapshotStats;
 use jj_lib::workspace::Workspace;
+
 use pollster::FutureExt;
-use tempfile::TempDir;
+// use tempfile::TempDir;
 
-use crate::test_backend::TestBackendFactory;
-
-pub mod test_backend;
-pub mod test_signing_backend;
-
-pub fn hermetic_libgit2() {
-    // libgit2 respects init.defaultBranch (and possibly other config
-    // variables) in the user's config files. Disable access to them to make
-    // our tests hermetic.
-    //
-    // set_search_path is unsafe because it cannot guarantee thread safety (as
-    // its documentation states). For the same reason, we wrap these invocations
-    // in `call_once`.
-    static CONFIGURE_GIT2: Once = Once::new();
-    CONFIGURE_GIT2.call_once(|| unsafe {
-        git2::opts::set_search_path(git2::ConfigLevel::System, "").unwrap();
-        git2::opts::set_search_path(git2::ConfigLevel::Global, "").unwrap();
-        git2::opts::set_search_path(git2::ConfigLevel::XDG, "").unwrap();
-        git2::opts::set_search_path(git2::ConfigLevel::ProgramData, "").unwrap();
-    });
-
-    // Prevent GitBackend from loading user and system configurations. For
-    // gitoxide API use in tests, Config::isolated() is probably better.
-    env::set_var("GIT_CONFIG_SYSTEM", "/dev/null");
-    env::set_var("GIT_CONFIG_GLOBAL", "/dev/null");
-    // gitoxide uses "main" as the default branch name, whereas git and libgit2
-    // uses "master".
-    env::set_var("GIT_CONFIG_KEY_0", "init.defaultBranch");
-    env::set_var("GIT_CONFIG_VALUE_0", "master");
-    env::set_var("GIT_CONFIG_COUNT", "1");
-}
+// use crate::test_backend::TestBackendFactory;
+mod test_backend;
+use test_backend::TestBackendFactory;
 
 pub fn new_temp_dir() -> TempDir {
-    hermetic_libgit2();
-    tempfile::Builder::new()
-        .prefix("jj-test-")
-        .tempdir()
-        .unwrap()
+    // Create a unique subdirectory in /tmp
+    let mut path = std::path::PathBuf::from("/tmp");
+
+    // Generate a unique directory name
+    let unique_dir = format!(
+        "jj-test-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+
+    path.push(unique_dir);
+
+    // Create the directory
+    std::fs::create_dir_all(&path).expect("Failed to create temp directory");
+
+    TempDir::from_path(path)
+}
+
+#[derive(Debug)]
+pub struct TempDir {
+    path: std::path::PathBuf,
+}
+
+impl TempDir {
+    fn from_path(path: std::path::PathBuf) -> Self {
+        Self { path }
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        // Clean up the temporary directory when the TempDir is dropped
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
 }
 
 /// Returns new low-level config object that includes fake user configuration
@@ -150,12 +146,6 @@ impl TestEnvironment {
             let factory = self.test_backend_factory.clone();
             Box::new(move |_settings, store_path| Ok(Box::new(factory.load(store_path))))
         });
-        factories.add_backend(
-            SecretBackend::name(),
-            Box::new(|settings, store_path| {
-                Ok(Box::new(SecretBackend::load(settings, store_path)?))
-            }),
-        );
         factories
     }
 
@@ -179,7 +169,6 @@ pub struct TestRepo {
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum TestRepoBackend {
-    Git,
     Local,
     Test,
 }
@@ -192,7 +181,6 @@ impl TestRepoBackend {
         store_path: &Path,
     ) -> Result<Box<dyn Backend>, BackendInitError> {
         match self {
-            TestRepoBackend::Git => Ok(Box::new(GitBackend::init_internal(settings, store_path)?)),
             TestRepoBackend::Local => Ok(Box::new(LocalBackend::init(store_path))),
             TestRepoBackend::Test => Ok(Box::new(env.test_backend_factory.init(store_path))),
         }
@@ -219,9 +207,13 @@ impl TestRepo {
         let env = TestEnvironment::init();
 
         let repo_dir = env.root().join("repo");
-        fs::create_dir(&repo_dir).unwrap();
 
-        let repo = ReadonlyRepo::init(
+        match fs::create_dir(&repo_dir) {
+            Ok(_) => println!("Successfully created directory"),
+            Err(e) => println!("Error creating directory: {}", e),
+        }
+
+        let repo = match ReadonlyRepo::init(
             settings,
             &repo_dir,
             &|settings, store_path| backend.init_backend(&env, settings, store_path),
@@ -230,18 +222,19 @@ impl TestRepo {
             ReadonlyRepo::default_op_heads_store_initializer(),
             ReadonlyRepo::default_index_store_initializer(),
             ReadonlyRepo::default_submodule_store_initializer(),
-        )
-        .unwrap();
+        ) {
+            Ok(repo) => repo,
+            Err(e) => {
+                println!("Error initializing ReadonlyRepo: {:?}", e);
+                panic!("Failed to initialize repo: {:?}", e);
+            }
+        };
 
         Self {
             env,
             repo,
             repo_path: repo_dir,
         }
-    }
-
-    pub fn repo_path(&self) -> &Path {
-        &self.repo_path
     }
 }
 
@@ -587,4 +580,68 @@ pub fn assert_no_forgotten_test_files(test_dir: &Path) {
             }
         }
     }
+}
+
+fn test_init_wasm() {
+    println!("Testing init in WASM environment...");
+
+    // Initialize with test settings
+    let settings = user_settings();
+    let test_workspace = TestWorkspace::init(&settings);
+    let repo = &test_workspace.repo;
+
+    // Test the contents of the working-copy commit after init
+    let wc_commit_id = repo
+        .view()
+        .get_wc_commit_id(&WorkspaceId::default())
+        .unwrap();
+    let wc_commit = repo.store().get_commit(wc_commit_id).unwrap();
+
+    // Verify the initial state
+    assert_eq!(*wc_commit.tree_id(), repo.store().empty_merged_tree_id());
+    assert_eq!(
+        wc_commit.store_commit().parents,
+        vec![repo.store().root_commit_id().clone()]
+    );
+    assert!(wc_commit.predecessors().next().is_none());
+    assert_eq!(wc_commit.description(), "");
+
+    // Check user settings were applied
+    assert_eq!(wc_commit.author().name, settings.user_name());
+    assert_eq!(wc_commit.author().email, settings.user_email());
+    assert_eq!(wc_commit.committer().name, settings.user_name());
+    assert_eq!(wc_commit.committer().email, settings.user_email());
+
+    println!("✅ Init test passed!");
+}
+
+pub fn main() {
+    println!("🔬 Running JJ WASM test suite...");
+
+    test_init_wasm();
+
+    // Initialize a test repo
+    let test_repo = TestRepo::init();
+
+    // // Create a simple file structure
+    let store = test_repo.repo.store();
+    let mut tree_builder = store.tree_builder(store.empty_tree_id().clone());
+
+    // Create a test file
+    let test_path = RepoPath::from_internal_string("product_metadata.json");
+    write_normal_file(
+        &mut tree_builder,
+        &test_path,
+        r#"{"id": "123", "name": "Test Product", "category": "test"}"#,
+    );
+
+    // Write the tree and verify
+    let tree_id = tree_builder.write_tree().unwrap();
+    let tree = store.get_tree(RepoPathBuf::root(), &tree_id).unwrap();
+
+    // Dump the tree contents
+    let tree_dump = dump_tree(&store, &MergedTreeId::Legacy(tree_id));
+    println!("\n📁 Repository contents:\n{}", tree_dump);
+
+    println!("✅ Test completed successfully!");
 }

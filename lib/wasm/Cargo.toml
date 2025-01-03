@@ -1,0 +1,17 @@
+[package]
+name = "jj-lib-wasm"
+description = "WebAssembly module for the Jujutsu version control system"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+jj-lib = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+pollster = { workspace = true }
+itertools = { workspace = true }
+rand = { workspace = true }
+getrandom = { version = "0.2", features = ["js"] }

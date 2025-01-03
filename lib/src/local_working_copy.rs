@@ -114,8 +114,9 @@ use crate::working_copy::UntrackedReason;
 use crate::working_copy::WorkingCopy;
 use crate::working_copy::WorkingCopyFactory;
 use crate::working_copy::WorkingCopyStateError;
-
 #[cfg(unix)]
+type FileExecutableFlag = bool;
+#[cfg(target_family = "wasm")]
 type FileExecutableFlag = bool;
 #[cfg(windows)]
 type FileExecutableFlag = ();
@@ -155,7 +156,7 @@ impl FileState {
     /// Indicates that a file exists in the tree but that it needs to be
     /// re-stat'ed on the next snapshot.
     fn placeholder() -> Self {
-        #[cfg(unix)]
+        #[cfg(any(unix, target_family = "wasm"))]
         let executable = false;
         #[cfg(windows)]
         let executable = ();
@@ -428,7 +429,7 @@ fn file_state_from_proto(proto: &crate::protos::working_copy::FileState) -> File
         crate::protos::working_copy::FileType::Normal => FileType::Normal {
             executable: FileExecutableFlag::default(),
         },
-        #[cfg(unix)]
+        #[cfg(any(unix, target_family = "wasm"))]
         crate::protos::working_copy::FileType::Executable => FileType::Normal { executable: true },
         // can exist in files written by older versions of jj
         #[cfg(windows)]
@@ -454,9 +455,9 @@ fn file_state_from_proto(proto: &crate::protos::working_copy::FileState) -> File
 fn file_state_to_proto(file_state: &FileState) -> crate::protos::working_copy::FileState {
     let mut proto = crate::protos::working_copy::FileState::default();
     let file_type = match &file_state.file_type {
-        #[cfg(unix)]
+        #[cfg(any(unix, target_family = "wasm"))]
         FileType::Normal { executable: false } => crate::protos::working_copy::FileType::Normal,
-        #[cfg(unix)]
+        #[cfg(any(unix, target_family = "wasm"))]
         FileType::Normal { executable: true } => crate::protos::working_copy::FileType::Executable,
         #[cfg(windows)]
         FileType::Normal { executable: () } => crate::protos::working_copy::FileType::Normal,
@@ -694,13 +695,21 @@ fn file_state(metadata: &Metadata) -> Option<FileState> {
         Some(FileType::Symlink)
     } else if metadata_file_type.is_file() {
         #[cfg(unix)]
-        if metadata.permissions().mode() & 0o111 != 0 {
-            Some(FileType::Normal { executable: true })
-        } else {
+        {
+            if metadata.permissions().mode() & 0o111 != 0 {
+                Some(FileType::Normal { executable: true })
+            } else {
+                Some(FileType::Normal { executable: false })
+            }
+        }
+        #[cfg(target_family = "wasm")]
+        {
             Some(FileType::Normal { executable: false })
         }
         #[cfg(windows)]
-        Some(FileType::Normal { executable: () })
+        {
+            Some(FileType::Normal { executable: () })
+        }
     } else {
         None
     };
@@ -1471,7 +1480,7 @@ impl FileSnapshotter<'_> {
         materialized_conflict_data: Option<MaterializedConflictData>,
     ) -> Result<MergedTreeValue, SnapshotError> {
         if let Some(current_tree_value) = current_tree_values.as_resolved() {
-            #[cfg(unix)]
+            #[cfg(any(unix, target_family = "wasm"))]
             let _ = current_tree_value; // use the variable
             let id = self.write_file_to_store(repo_path, disk_path).await?;
             // On Windows, we preserve the executable bit from the current tree.
@@ -1896,7 +1905,7 @@ impl TreeState {
             } else {
                 let file_type = match after.into_resolved() {
                     Ok(value) => match value.unwrap() {
-                        #[cfg(unix)]
+                        #[cfg(any(unix, target_family = "wasm"))]
                         TreeValue::File { id: _, executable } => FileType::Normal { executable },
                         #[cfg(windows)]
                         TreeValue::File { .. } => FileType::Normal { executable: () },

@@ -96,7 +96,7 @@ testutils = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
-default = ["git"]
+default = []
 git = ["dep:git2", "dep:gix"]
 gix-max-performance = [
     # Requires `cmake` as a build dependency.
@@ -106,7 +106,7 @@ gix-max-performance = [
 ]
 vendored-openssl = ["git2/vendored-openssl"]
 watchman = ["dep:tokio", "dep:watchman_client"]
-testing = ["git"]
+testing = []
 
 [lints]
 workspace = true

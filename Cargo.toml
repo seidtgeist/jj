@@ -2,7 +2,7 @@ cargo-features = []
 
 [workspace]
 resolver = "2"
-members = ["cli", "lib", "lib/gen-protos", "lib/proc-macros", "lib/testutils"]
+members = ["cli", "lib", "lib/gen-protos", "lib/proc-macros", "lib/testutils", "lib/wasm"]
 
 [workspace.package]
 version = "0.25.0"
@@ -46,6 +46,7 @@ dirs = "5.0.1"
 dunce = "1.0.5"
 either = "1.13.0"
 futures = "0.3.31"
+getrandom = { version = "0.2", features = ["js"] }
 git2 = { version = "0.19.0", features = [
     # Do *not* disable this feature even if you'd like dynamic linking. Instead,
     # set the environment variable `LIBGIT2_NO_VENDOR=1` if dynamic linking must
@@ -144,7 +145,6 @@ uninlined_format_args = "warn"
 # See https://docs.rs/insta/latest/insta/#optional-faster-runs.
 [profile.dev.package]
 insta.opt-level = 3
-similar.opt-level = 3
 
 [profile.release]
 strip = "debuginfo"

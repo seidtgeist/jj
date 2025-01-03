@@ -157,7 +157,7 @@ impl Workspace {
         working_copy: Box<dyn WorkingCopy>,
         repo_loader: RepoLoader,
     ) -> Result<Workspace, PathError> {
-        let workspace_root = dunce::canonicalize(workspace_root).context(workspace_root)?;
+        let workspace_root = workspace_root.to_path_buf();
         Ok(Self::new_no_canonicalize(
             workspace_root,
             repo_path,

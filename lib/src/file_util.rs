@@ -257,3 +257,22 @@ mod tests {
         assert!(persist_content_addressed_temp_file(temp_file, &target).is_ok());
     }
 }
+
+#[cfg(target_family = "wasm")]
+mod platform {
+    use std::io;
+    use std::path::Path;
+
+    pub fn check_symlink_support() -> io::Result<bool> {
+        // WASI currently doesn't support symlinks
+        Ok(false)
+    }
+
+    pub fn try_symlink<P: AsRef<Path>, Q: AsRef<Path>>(_original: P, _link: Q) -> io::Result<()> {
+        // Return unsupported operation error since WASI doesn't support symlinks
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Symlinks are not supported in WASM",
+        ))
+    }
+}
